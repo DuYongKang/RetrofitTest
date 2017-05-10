@@ -11,6 +11,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -22,6 +23,7 @@ import com.example.duyongkang.retrofittest.bean.Task;
 import com.example.duyongkang.retrofittest.bean.User;
 import com.example.duyongkang.retrofittest.service.FeedbackService;
 import com.example.duyongkang.retrofittest.service.FileUploadService;
+import com.example.duyongkang.retrofittest.service.LoginService;
 import com.example.duyongkang.retrofittest.util.ErrorUtils;
 import com.example.duyongkang.retrofittest.util.FileUtils;
 import com.example.duyongkang.retrofittest.util.LogUtils;
@@ -49,12 +51,16 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST =100;
     private int PICK_IMAGE_FROM_GALLERY_REQUEST=1;
 
+    private int PICK_IMAGE_FORM_GALLERY_ALBUM=3;
+
+    private int PICK_IMAGE_FROM_PART_MAP=4;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Utils.init(MainActivity.this);
         setContentView(R.layout.activity_main);
-
+        //获取临时权限
         if(ContextCompat.checkSelfPermission(MainActivity.this,Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED){
             ActivityCompat.requestPermissions(MainActivity.this,
@@ -77,7 +83,73 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        Button uploadAlbumButton = (Button) findViewById(R.id.btn_album);
+        uploadAlbumButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent();
+                intent.setType("image/*");
+                intent.setAction(Intent.ACTION_GET_CONTENT);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);
+                startActivityForResult(
+                        Intent.createChooser(intent,"Select Picture"),
+                        PICK_IMAGE_FORM_GALLERY_ALBUM
+                );
+            }
+        });
 
+        Button  partMapButton = (Button) findViewById(R.id.btn_part_map);
+        partMapButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent();
+                intent.setType("image/*");
+                intent.setAction(Intent.ACTION_GET_CONTENT);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);
+                startActivityForResult(
+                        Intent.createChooser(intent,"Select Picture"),
+                        PICK_IMAGE_FROM_PART_MAP
+                );
+            }
+        });
+
+        Button download= (Button) findViewById(R.id.btn_download);
+        download.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(MainActivity.this,DownloadActivity.class);
+                startActivity(intent);
+            }
+        });
+
+        Button login = (Button) findViewById(R.id.btn_login);
+        login.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                LoginService loginService =
+                        ServiceGenerator.createService(LoginService.class, "user", "secretpassword");
+                Call<User> call = loginService.basicLogin();
+                call.enqueue(new Callback<User >() {
+                    @Override
+                    public void onResponse(Call<User> call, Response<User> response) {
+                        if (response.isSuccessful()) {
+                            LogUtils.e("test1");
+                            // user object available
+                        } else {
+                            LogUtils.e("test2");
+                            // error response, no access to resource?
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<User> call, Throwable t) {
+                        // something went completely south (like no internet connection)
+                        LogUtils.e( t.getMessage());
+                        Log.d("Error", t.getMessage());
+                    }
+                });
+            }
+        });
 
 
 
@@ -179,8 +251,31 @@ public class MainActivity extends AppCompatActivity {
                 fileUris.add(uri);
             }
             uploadFiles(fileUris.get(0),fileUris.get(1));
+
 //            Uri uri= data.getData();
 //            uploadFile(uri);
+
+//            uploadAlbum(fileUris);
+        }else if(requestCode == PICK_IMAGE_FORM_GALLERY_ALBUM){
+            LogUtils.e(data);
+            ClipData clipData=data.getClipData();
+            ArrayList<Uri> fileUris=new ArrayList<>();
+            for (int i = 0; i < clipData.getItemCount(); i++) {
+                ClipData.Item item = clipData.getItemAt(i);
+                Uri uri=item.getUri();
+                fileUris.add(uri);
+            }
+//            uploadFiles(fileUris.get(0),fileUris.get(1));
+//
+////            Uri uri= data.getData();
+////            uploadFile(uri);
+            LogUtils.e("执行");
+            uploadAlbum(fileUris);
+        }else {
+            if(data!=null){
+                Uri uri= data.getData();
+                uploadPartMap(uri);
+            }
         }
     }
 
@@ -374,4 +469,106 @@ public class MainActivity extends AppCompatActivity {
         // MultipartBody.Part is used to send also the actual file name
         return MultipartBody.Part.createFormData(partName, file.getName(), requestFile);
     }
+
+
+    private void uploadAlbum(List<Uri> fileUris){
+        final EditText name = (EditText) findViewById(R.id.input_description);
+        // create upload service client
+        UserClient service =
+                ServiceGenerator.createService(UserClient.class);
+
+
+        List<MultipartBody.Part> parts = new ArrayList<>();
+        for (int i = 0; i < fileUris.size(); i++) {
+            parts.add(prepareFilePart(""+i,fileUris.get(i)));
+        }
+        // finally, execute the request
+        Call<ResponseBody> call = service.uploadAlbum(createPartFromString(name.getText().toString()),parts );
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(Call<ResponseBody> call,
+                                   Response<ResponseBody> response) {
+                Toast.makeText(MainActivity.this,"yeah!",Toast.LENGTH_LONG);
+                if (response.isSuccessful()) {
+                    // use response data and do some fancy stuff :)
+                } else {
+                    // parse the response body …
+                    APIError error = ErrorUtils.parseError(response);
+                    // … and use it to show error information
+
+                    // … or just log the issue like we’re doing :)
+                    Log.d("error message", error.getMessage());
+                }
+                Log.v("Upload", "success");
+                LogUtils.e("success");
+            }
+
+            @Override
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Toast.makeText(MainActivity.this,"nooo :(",Toast.LENGTH_LONG);
+                Log.e("Upload error:", t.getMessage());
+            }
+        });
+    }
+
+
+    private void uploadPartMap(Uri fileUri) {
+        final EditText name = (EditText) findViewById(R.id.input_description);
+        final EditText photographer = (EditText) findViewById(R.id.input_photographer);
+        final EditText year= (EditText) findViewById(R.id.input_year);
+        final EditText location = (EditText) findViewById(R.id.input_location);
+        // create upload service client
+        UserClient service =
+                ServiceGenerator.createService(UserClient.class);
+
+        Map<String,RequestBody> partmap= new HashMap<>();
+        partmap.put("client",createPartFromString("android"));
+        partmap.put("secret",createPartFromString("hunter2"));
+        if (!TextUtils.isEmpty(name.getText().toString())){
+            partmap.put("description",createPartFromString(name.getText().toString()));
+        }
+        if (!TextUtils.isEmpty(photographer.getText().toString())) {
+            partmap.put("photographer", createPartFromString(photographer.getText().toString()));
+        }
+        if (!TextUtils.isEmpty(year.getText().toString())) {
+            partmap.put("year", createPartFromString(year.getText().toString()));
+        }
+        if (!TextUtils.isEmpty(location.getText().toString())) {
+            partmap.put("location", createPartFromString(location.getText().toString()));
+        }
+
+
+        String descriptionString = "hello, this is description speaking";
+        RequestBody description =
+                RequestBody.create(
+                        okhttp3.MultipartBody.FORM, descriptionString);
+        LogUtils.e("步骤1");
+        // finally, execute the request
+        Call<ResponseBody> call = service.uploadPartMap(partmap, prepareFilePart("photo",fileUri));
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(Call<ResponseBody> call,
+                                   Response<ResponseBody> response) {
+                Toast.makeText(MainActivity.this,"yeah!",Toast.LENGTH_LONG);
+                if (response.isSuccessful()) {
+                    // use response data and do some fancy stuff :)
+                } else {
+                    // parse the response body …
+                    APIError error = ErrorUtils.parseError(response);
+                    // … and use it to show error information
+
+                    // … or just log the issue like we’re doing :)
+                    Log.d("error message", error.getMessage());
+                }
+                Log.v("Upload", "success");
+            }
+
+            @Override
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Toast.makeText(MainActivity.this,"nooo :(",Toast.LENGTH_LONG);
+                Log.e("Upload error:", t.getMessage());
+            }
+        });
+    }
+
 }

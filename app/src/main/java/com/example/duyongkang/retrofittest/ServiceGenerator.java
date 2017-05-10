@@ -1,5 +1,8 @@
 package com.example.duyongkang.retrofittest;
 
+import android.text.TextUtils;
+
+import okhttp3.Credentials;
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import retrofit2.Converter;
@@ -45,5 +48,28 @@ public class ServiceGenerator {
         }
 
         return retrofit.create(serviceClass);
+    }
+    public  static <S> S createService(Class<S> serviceClass,String username,String password){
+        if(!TextUtils.isEmpty(username)
+                && !TextUtils.isEmpty(password)){
+            String autoToken = Credentials.basic(username,password);
+            return createService(serviceClass,autoToken);
+        }
+        return createService(serviceClass,null,null);
+    }
+
+    public static <S> S createService(Class<S> serviceClass,final String authToken){
+        if(!TextUtils.isEmpty(authToken)){
+            AuthenticationInterceptor interceptor =
+                    new AuthenticationInterceptor(authToken);
+
+            if(!httpClient.interceptors().contains(interceptor)){
+                httpClient.addInterceptor(interceptor);
+                builder.client(httpClient.build());
+                retrofit=builder.build();
+            }
+        }
+
+        return  retrofit.create(serviceClass);
     }
 }
